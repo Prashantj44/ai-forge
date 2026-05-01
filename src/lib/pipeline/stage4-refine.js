@@ -37,8 +37,22 @@ export async function refineSchemas(schemas, intent, design) {
     };
   }
 
-  // If there are errors or warnings, use LLM to do targeted refinement
-  const allIssues = [...crossValidation.errors, ...crossValidation.warnings];
+  // If there are only warnings but no errors, skip expensive LLM refinement
+  if (crossValidation.errors.length === 0) {
+    return {
+      result: current,
+      metrics: {
+        latency: Date.now() - startTime,
+        crossLayerErrors: 0,
+        crossLayerWarnings: crossValidation.warnings.length,
+        refinementApplied: false,
+      },
+      repairs: [],
+    };
+  }
+
+  // Only use LLM for actual errors
+  const allIssues = [...crossValidation.errors];
 
   if (allIssues.length > 0) {
     try {

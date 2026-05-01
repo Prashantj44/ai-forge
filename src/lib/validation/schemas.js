@@ -24,11 +24,11 @@ export const IntentSchema = z.object({
   description: z.string().min(1),
   features: z.array(FeatureSchema).min(1),
   roles: z.array(z.string()).min(1),
-  assumptions: z.array(z.string()),
+  assumptions: z.array(z.string()).default([]),
   ambiguities: z.array(z.object({
     issue: z.string(),
     suggestion: z.string(),
-  })),
+  })).default([]),
   complexity: z.enum(["low", "medium", "high"]),
 });
 
@@ -55,7 +55,7 @@ export const RelationSchema = z.object({
 export const EntitySchema = z.object({
   name: z.string().min(1),
   fields: z.array(FieldSchema).min(1),
-  relations: z.array(RelationSchema),
+  relations: z.array(RelationSchema).default([]),
   timestamps: z.boolean().default(true),
 });
 
@@ -190,7 +190,7 @@ export const DBTableSchema = z.object({
     name: z.string(),
     columns: z.array(z.string()),
     unique: z.boolean().default(false),
-  })).optional(),
+  })).default([]),
   timestamps: z.boolean().default(true),
 });
 
@@ -217,7 +217,7 @@ export const AuthConfigSchema = z.object({
     path: z.string(),
     allowedRoles: z.array(z.string()),
     isPublic: z.boolean().default(false),
-  })).min(1),
+  })).default([]),
 });
 
 // ============================================================

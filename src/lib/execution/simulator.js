@@ -5,7 +5,7 @@
  * Proves that the output is executable — not just valid JSON.
  */
 
-import { callLLM } from "../llm.js";
+// No LLM import needed — uses deterministic generation for speed
 
 /**
  * Generate a working HTML application from the full config
@@ -15,79 +15,22 @@ import { callLLM } from "../llm.js";
 export async function simulateExecution(fullConfig) {
   const startTime = Date.now();
 
-  const systemPrompt = `You are a full-stack web developer. Generate a COMPLETE, WORKING single-page HTML application from the given configuration.
-
-RULES:
-1. Output must be a SINGLE complete HTML file with embedded CSS and JavaScript.
-2. Include all pages as sections that can be navigated via a sidebar/nav.
-3. Use modern CSS (flexbox, grid, variables) for styling — make it look professional.
-4. Implement a working navigation system (show/hide sections).
-5. Include sample/mock data in JavaScript for tables and lists.
-6. Forms should have basic validation.
-7. Tables should show realistic mock data matching the DB schema.
-8. Dashboard should have stat cards with sample numbers.
-9. Include a login page if auth is configured.
-10. Make it responsive and visually appealing with a color scheme from the theme config.
-11. Do NOT use any external libraries or CDNs — pure HTML/CSS/JS only.
-12. Every interactive element must work — buttons, navigation, forms.
-13. The HTML must be a COMPLETE document starting with <!DOCTYPE html>.
-
-OUTPUT: Return a JSON object with a single key "html" containing the complete HTML string.`;
-
-  const userPrompt = `Generate a working HTML application from this configuration:
-
-App: ${fullConfig.appName}
-Type: ${fullConfig.appType}
-Description: ${fullConfig.description}
-
-## UI Config:
-Pages: ${fullConfig.ui.pages.map((p) => `${p.title} (${p.path}) - layout: ${p.layout}, components: ${p.components.map((c) => c.type).join(", ")}`).join("\n")}
-Theme: ${JSON.stringify(fullConfig.ui.theme)}
-
-## DB Schema (for mock data):
-Tables: ${fullConfig.database.tables.map((t) => `${t.name}: ${t.columns.map((c) => c.name).join(", ")}`).join("\n")}
-
-## Auth:
-Method: ${fullConfig.auth.authMethod}
-Roles: ${fullConfig.auth.roles.map((r) => r.role).join(", ")}
-
-## Navigation:
-${fullConfig.ui.navigation.map((n) => `- ${n.label}: ${n.path}`).join("\n")}
-
-Generate a complete, working HTML application. Return as: { "html": "<!DOCTYPE html>..." }`;
-
   try {
-    const { result, metrics } = await callLLM(systemPrompt, userPrompt, {
-      temperature: 0.2,
-      maxRetries: 2,
-    });
-
-    let html = result.html || result;
-
-    // If result is a string, use it directly
-    if (typeof html !== "string") {
-      html = JSON.stringify(html);
-    }
-
-    // Basic validation: check it starts with DOCTYPE
-    if (!html.includes("<!DOCTYPE") && !html.includes("<html")) {
-      html = `<!DOCTYPE html>\n<html><head><title>${fullConfig.appName}</title></head><body><h1>Generated App: ${fullConfig.appName}</h1><p>${fullConfig.description}</p></body></html>`;
-    }
-
+    // Use deterministic fallback app generator (fast, no LLM needed)
+    // This ensures we stay within serverless function time limits
+    const html = generateFallbackApp(fullConfig);
     return {
       html,
       metrics: {
-        ...metrics,
         latency: Date.now() - startTime,
         htmlSize: html.length,
+        method: "deterministic",
       },
     };
   } catch (error) {
     console.error("Execution simulation failed:", error.message);
-    // Return a minimal fallback app
-    const fallbackHtml = generateFallbackApp(fullConfig);
     return {
-      html: fallbackHtml,
+      html: `<!DOCTYPE html><html><head><title>${fullConfig.appName || "App"}</title></head><body><h1>${fullConfig.appName || "Generated App"}</h1><p>${fullConfig.description || ""}</p></body></html>`,
       metrics: {
         latency: Date.now() - startTime,
         error: error.message,

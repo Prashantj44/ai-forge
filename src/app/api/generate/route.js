@@ -11,7 +11,7 @@ import { NextResponse } from "next/server";
 import { runPipeline } from "@/lib/pipeline/index.js";
 import { simulateExecution } from "@/lib/execution/simulator.js";
 
-export const maxDuration = 120; // Allow up to 2 minutes for generation
+export const maxDuration = 60; // Vercel Hobby max is 60s
 
 export async function POST(request) {
   try {

@@ -35,7 +35,7 @@ const COST_PER_1M_OUTPUT = 0.40;
 export async function callLLM(systemPrompt, userPrompt, options = {}) {
   const {
     temperature = 0.15,
-    maxRetries = 6,
+    maxRetries = 2,
     model = null, // null = use fallback chain
   } = options;
 
@@ -137,7 +137,7 @@ export async function callLLM(systemPrompt, userPrompt, options = {}) {
         // For 503 (overloaded), retry with longer delay
         if (errorMsg.includes("503") || errorMsg.includes("UNAVAILABLE")) {
           if (attempt < maxRetries - 1) {
-            const delay = (attempt + 1) * 10000; // 10s, 20s, 30s, 40s, 50s, 60s
+            const delay = (attempt + 1) * 3000; // 3s, 6s
             console.log(`[${currentModel}] server overloaded, retrying in ${delay / 1000}s...`);
             await new Promise((resolve) => setTimeout(resolve, delay));
             continue;

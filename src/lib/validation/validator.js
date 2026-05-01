@@ -71,7 +71,10 @@ export function validateCrossLayer(fullConfig) {
   const errors = [];
   const warnings = [];
 
-  const { ui, api, database, auth } = fullConfig;
+  const ui = fullConfig?.ui;
+  const api = fullConfig?.api;
+  const database = fullConfig?.database;
+  const auth = fullConfig?.auth;
 
   // 1. Check that all DB tables referenced by API endpoints exist
   if (api && database) {

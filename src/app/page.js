@@ -41,7 +41,17 @@ export default function Home() {
       });
 
       clearInterval(stageTimer);
-      const data = await response.json();
+      const responseText = await response.text();
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch (parseErr) {
+        throw new Error(
+          response.status === 504 
+            ? "Generation timed out — please try a simpler prompt" 
+            : `Server error (${response.status}): ${responseText.substring(0, 100)}`
+        );
+      }
 
       if (data.status === "clarification_needed") {
         setClarification(data);
