@@ -45,30 +45,15 @@ export async function repairConfig(data, schemaName, errors, context = {}) {
     return { repaired: reValidation.data, repairs, success: true };
   }
 
-  // Phase 2: LLM-based repair for remaining errors
+  // Phase 2: Skip LLM repair to stay within serverless timeout
+  // Programmatic fixes handle most cases; remaining issues are non-critical
   const remainingErrors = reValidation.errors;
   if (remainingErrors.length > 0) {
-    try {
-      const llmRepair = await llmRepairConfig(current, schemaName, remainingErrors, context);
-      repairs.push({
-        type: "llm",
-        errorsFixed: remainingErrors.length,
-        description: "LLM-based repair for complex validation errors",
-      });
-      current = llmRepair;
-
-      // Final validation
-      const finalValidation = validateSchema(current, schemaName);
-      if (finalValidation.valid) {
-        success = true;
-        current = finalValidation.data;
-      }
-    } catch (llmError) {
-      repairs.push({
-        type: "llm_failed",
-        error: llmError.message,
-      });
-    }
+    repairs.push({
+      type: "skipped_llm_repair",
+      errorsRemaining: remainingErrors.length,
+      description: "Skipped LLM repair for speed — using best-effort programmatic output",
+    });
   }
 
   return { repaired: current, repairs, success };

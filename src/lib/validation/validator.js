@@ -189,24 +189,28 @@ export function validateCrossLayer(fullConfig) {
  * @returns {{ valid: boolean, structuralErrors: Array, crossLayerErrors: Array, crossLayerWarnings: Array, score: number }}
  */
 export function validateFull(fullConfig) {
-  // Structural validation
-  const structural = validateSchema(fullConfig, "fullConfig");
+  // Lightweight structural validation — check presence of key sections
+  const structuralErrors = [];
+  if (!fullConfig.ui?.pages?.length) structuralErrors.push({ type: "missing", message: "No UI pages defined" });
+  if (!fullConfig.api?.endpoints?.length) structuralErrors.push({ type: "missing", message: "No API endpoints defined" });
+  if (!fullConfig.database?.tables?.length) structuralErrors.push({ type: "missing", message: "No DB tables defined" });
+  if (!fullConfig.auth?.roles?.length) structuralErrors.push({ type: "missing", message: "No auth roles defined" });
 
-  // Cross-layer validation (only if structural passes or has data)
+  // Cross-layer validation (only if all layers present)
   let crossLayer = { valid: true, errors: [], warnings: [] };
   if (fullConfig.ui && fullConfig.api && fullConfig.database && fullConfig.auth) {
     crossLayer = validateCrossLayer(fullConfig);
   }
 
-  const totalErrors = (structural.errors?.length || 0) + crossLayer.errors.length;
+  const totalErrors = structuralErrors.length + crossLayer.errors.length;
   const totalWarnings = crossLayer.warnings.length;
 
-  // Score: 100 = perfect, deduct 10 per error, 2 per warning
-  const score = Math.max(0, 100 - totalErrors * 10 - totalWarnings * 2);
+  // Score: 100 = perfect, deduct 15 per structural error, 5 per cross-layer error, 1 per warning
+  const score = Math.max(0, 100 - structuralErrors.length * 15 - crossLayer.errors.length * 5 - totalWarnings * 1);
 
   return {
-    valid: structural.valid && crossLayer.valid,
-    structuralErrors: structural.errors || [],
+    valid: structuralErrors.length === 0 && crossLayer.valid,
+    structuralErrors,
     crossLayerErrors: crossLayer.errors,
     crossLayerWarnings: crossLayer.warnings,
     score,

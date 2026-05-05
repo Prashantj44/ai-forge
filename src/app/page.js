@@ -8,6 +8,35 @@ import ExecutionPreview from "@/components/ExecutionPreview";
 import MetricsPanel from "@/components/MetricsPanel";
 import ClarificationDialog from "@/components/ClarificationDialog";
 
+/**
+ * Helper: call a stage API with safe JSON parsing
+ */
+async function callStage(url, body) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  const text = await response.text();
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error(
+      response.status === 504
+        ? "Stage timed out — the AI server may be overloaded, please retry"
+        : `Server error (${response.status}): ${text.substring(0, 120)}`
+    );
+  }
+
+  if (data.status === "error") {
+    throw new Error(data.error || "Stage failed");
+  }
+
+  return data;
+}
+
 export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState(null);
@@ -22,59 +51,119 @@ export default function Home() {
     setResult(null);
     setStages(null);
     setClarification(null);
-    setCurrentStage(1);
 
-    // Simulate stage progression for visual feedback
-    const stageTimer = setInterval(() => {
-      setCurrentStage((prev) => {
-        if (prev < 4) return prev + 1;
-        clearInterval(stageTimer);
-        return prev;
-      });
-    }, 5000);
+    const stageResults = [];
+    const allRepairs = [];
+    const pipelineStart = Date.now();
 
     try {
-      const response = await fetch("/api/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt }),
+      // ─── Stage 1: Intent Extraction ───
+      setCurrentStage(1);
+      setStages([
+        { id: 1, name: "Intent Extraction", status: "running", latency: 0, repairCount: 0 },
+      ]);
+
+      const s1 = await callStage("/api/generate/intent", { prompt });
+      const s1Latency = s1.metrics?.latency || 0;
+      allRepairs.push(...(s1.repairs || []));
+
+      // Check for critical ambiguities
+      if (s1.intent?.ambiguities?.length > 3 && s1.intent?.features?.length < 2) {
+        setClarification({
+          ambiguities: s1.intent.ambiguities,
+          stages: [{ id: 1, name: "Intent Extraction", status: "complete", latency: s1Latency, repairCount: 0 }],
+        });
+        setStages([{ id: 1, name: "Intent Extraction", status: "complete", latency: s1Latency, repairCount: 0 }]);
+        setCurrentStage(0);
+        setIsLoading(false);
+        return;
+      }
+
+      stageResults.push({
+        id: 1, name: "Intent Extraction", status: "complete",
+        latency: s1Latency, repairCount: s1.repairs?.length || 0,
       });
+      setStages([...stageResults]);
 
-      clearInterval(stageTimer);
-      const responseText = await response.text();
-      let data;
-      try {
-        data = JSON.parse(responseText);
-      } catch (parseErr) {
-        throw new Error(
-          response.status === 504 
-            ? "Generation timed out — please try a simpler prompt" 
-            : `Server error (${response.status}): ${responseText.substring(0, 100)}`
-        );
-      }
+      // ─── Stage 2: System Design ───
+      setCurrentStage(2);
+      setStages([
+        ...stageResults,
+        { id: 2, name: "System Design", status: "running", latency: 0, repairCount: 0 },
+      ]);
 
-      if (data.status === "clarification_needed") {
-        setClarification(data);
-        setStages(data.stages);
-        setCurrentStage(0);
-        setIsLoading(false);
-        return;
-      }
+      const s2 = await callStage("/api/generate/design", { intent: s1.intent });
+      const s2Latency = s2.metrics?.latency || 0;
+      allRepairs.push(...(s2.repairs || []));
 
-      if (data.status === "error") {
-        setError(data.error || "An error occurred during generation");
-        setStages(data.stages);
-        setCurrentStage(0);
-        setIsLoading(false);
-        return;
-      }
+      stageResults.push({
+        id: 2, name: "System Design", status: "complete",
+        latency: s2Latency, repairCount: s2.repairs?.length || 0,
+      });
+      setStages([...stageResults]);
 
-      setResult(data);
-      setStages(data.stages);
+      // ─── Stage 3: Schema Generation ───
+      setCurrentStage(3);
+      setStages([
+        ...stageResults,
+        { id: 3, name: "Schema Generation", status: "running", latency: 0, repairCount: 0 },
+      ]);
+
+      const s3 = await callStage("/api/generate/schema", { intent: s1.intent, design: s2.design });
+      const s3Latency = s3.metrics?.latency || 0;
+      allRepairs.push(...(s3.repairs || []));
+
+      stageResults.push({
+        id: 3, name: "Schema Generation", status: "complete",
+        latency: s3Latency, repairCount: s3.repairs?.length || 0,
+      });
+      setStages([...stageResults]);
+
+      // ─── Stage 4: Refinement & Assembly ───
+      setCurrentStage(4);
+      setStages([
+        ...stageResults,
+        { id: 4, name: "Refinement", status: "running", latency: 0, repairCount: 0 },
+      ]);
+
+      const s4 = await callStage("/api/generate/refine", {
+        intent: s1.intent,
+        design: s2.design,
+        schemas: s3.schemas,
+        stageMetrics: [s1.metrics, s2.metrics, s3.metrics],
+      });
+      const s4Latency = s4.metrics?.totalLatency || 0;
+      allRepairs.push(...(s4.repairs || []));
+
+      stageResults.push({
+        id: 4, name: "Refinement", status: "complete",
+        latency: s4Latency, repairCount: s4.repairs?.length || 0,
+      });
+      setStages([...stageResults]);
       setCurrentStage(5); // All complete
+
+      // Assemble final result
+      const totalLatency = Date.now() - pipelineStart;
+      setResult({
+        config: s4.config,
+        intent: s1.intent,
+        design: s2.design,
+        validation: s4.validation,
+        execution: s4.execution,
+        stages: stageResults,
+        metrics: {
+          ...s4.metrics,
+          totalLatency,
+          totalRepairs: allRepairs.length,
+          stageLatencies: stageResults.map((s) => ({
+            name: s.name,
+            latency: s.latency,
+          })),
+        },
+      });
     } catch (err) {
-      clearInterval(stageTimer);
-      setError(err.message || "Failed to connect to the generation API");
+      setError(err.message || "Generation failed — please try again");
+      setCurrentStage(0);
     } finally {
       setIsLoading(false);
     }
@@ -132,7 +221,6 @@ export default function Home() {
           ambiguities={clarification.ambiguities}
           onContinue={() => {
             setClarification(null);
-            // Re-run with the partial result as additional context
           }}
           onCancel={() => setClarification(null)}
         />
